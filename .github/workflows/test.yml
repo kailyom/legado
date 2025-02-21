@@ -244,12 +244,16 @@ jobs:
           cd $GITHUB_WORKSPACE/apk/
           git init
           git checkout -b test
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "kailyom"
+          git config --global user.email "definitely3456@hotmail.com"
           git remote add origin "https://${{ github.actor }}:${{ secrets.ACTIONS_TOKEN }}@github.com/${{ github.actor }}/release"
           git add *.apk
           git commit -m "${{ needs.prepare.outputs.versionL }}"
           git push -f -u origin test
+
+  #         git config --global user.name "github-actions[bot]"
+  #         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
 
   telegram:
     needs: [ prepare, build ]
