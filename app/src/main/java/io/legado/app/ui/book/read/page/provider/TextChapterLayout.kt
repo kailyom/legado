@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.Paint
-import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -25,6 +24,7 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
+import io.legado.app.utils.getTextWidthsCompat
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -76,18 +76,21 @@ class TextChapterLayout(
 
     private var pendingTextPage = TextPage()
 
-    private var isCompleted = false
-    private val job: Coroutine<*>
     private val bookChapter inline get() = textChapter.chapter
     private val displayTitle inline get() = textChapter.title
     private val chaptersSize inline get() = textChapter.chaptersSize
+
+    private var durY = 0f
+    private var absStartX = paddingLeft
+    private var floatArray = FloatArray(128)
+
+    private var isCompleted = false
+    private val job: Coroutine<*>
 
     var exception: Throwable? = null
 
     var channel = Channel<TextPage>(Int.MAX_VALUE)
 
-    var durY = 0f
-    var absStartX = paddingLeft
 
     init {
         job = Coroutine.async(
@@ -131,7 +134,7 @@ class TextChapterLayout(
 
     private fun onPageCompleted() {
         val textPage = pendingTextPage
-        textPage.index = textPages.lastIndex
+        textPage.index = textPages.size
         textPage.chapterIndex = bookChapter.index
         textPage.chapterSize = chaptersSize
         textPage.title = displayTitle
@@ -140,7 +143,7 @@ class TextChapterLayout(
         textPage.isCompleted = true
         textPage.textChapter = textChapter
         textPage.upLinesPosition()
-        textPage.renderHeight = textPage.lines.maxOf { it.lineBottom.toInt() }
+        textPage.upRenderHeight()
         textPages.add(textPage)
         channel.trySend(textPage)
         try {
@@ -242,7 +245,7 @@ class TextChapterLayout(
                     contentPaint,
                     contentPaintTextHeight,
                     contentPaintFontMetrics,
-                    book.getImageStyle(),
+                    imageStyle,
                     srcList = srcList
                 )
             } else {
@@ -250,30 +253,32 @@ class TextChapterLayout(
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
-                val matcher = AppPattern.imgPattern.matcher(content)
                 var start = 0
-                while (matcher.find()) {
-                    coroutineContext.ensureActive()
-                    val text = content.substring(start, matcher.start())
-                    if (text.isNotBlank()) {
-                        setTypeText(
+                if (content.contains("<img")) {
+                    val matcher = AppPattern.imgPattern.matcher(content)
+                    while (matcher.find()) {
+                        coroutineContext.ensureActive()
+                        val text = content.substring(start, matcher.start())
+                        if (text.isNotBlank()) {
+                            setTypeText(
+                                book,
+                                text,
+                                contentPaint,
+                                contentPaintTextHeight,
+                                contentPaintFontMetrics,
+                                imageStyle,
+                                isFirstLine = start == 0
+                            )
+                        }
+                        setTypeImage(
                             book,
-                            text,
-                            contentPaint,
+                            matcher.group(1)!!,
                             contentPaintTextHeight,
-                            contentPaintFontMetrics,
-                            book.getImageStyle(),
-                            isFirstLine = start == 0
+                            imageStyle
                         )
+                        isSetTypedImage = true
+                        start = matcher.end()
                     }
-                    setTypeImage(
-                        book,
-                        matcher.group(1)!!,
-                        contentPaintTextHeight,
-                        book.getImageStyle()
-                    )
-                    isSetTypedImage = true
-                    start = matcher.end()
                 }
                 if (start < content.length) {
                     if (isSingleImageStyle && isSetTypedImage) {
@@ -288,7 +293,7 @@ class TextChapterLayout(
                             contentPaint,
                             contentPaintTextHeight,
                             contentPaintFontMetrics,
-                            book.getImageStyle(),
+                            imageStyle,
                             isFirstLine = start == 0
                         )
                     }
@@ -399,16 +404,8 @@ class TextChapterLayout(
         isVolumeTitle: Boolean = false,
         srcList: LinkedList<String>? = null
     ) {
-        val widthsArray = FloatArray(text.length)
-        textPaint.getTextWidths(text, widthsArray)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            if (widthsArray.isNotEmpty()) {
-                val letterSpacing = textPaint.letterSpacing * textPaint.textSize
-                val letterSpacingHalf = letterSpacing * 0.5f
-                widthsArray[0] += letterSpacingHalf
-                widthsArray[widthsArray.lastIndex] += letterSpacingHalf
-            }
-        }
+        val widthsArray = allocateFloatArray(text.length)
+        textPaint.getTextWidthsCompat(text, widthsArray)
         val layout = if (ReadBookConfig.useZhLayout) {
             val (words, widths) = measureTextSplit(text, widthsArray)
             val indentSize = if (isFirstLine) paragraphIndent.length else 0
@@ -782,6 +779,13 @@ class TextChapterLayout(
             }
             durY = 0f
         }
+    }
+
+    private fun allocateFloatArray(size: Int): FloatArray {
+        if (size > floatArray.size) {
+            floatArray = FloatArray(size)
+        }
+        return floatArray
     }
 
     private fun measureTextSplit(
