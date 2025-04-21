@@ -14,12 +14,13 @@ import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlin.coroutines.CoroutineContext
@@ -363,7 +364,7 @@ object WebBook {
         return Coroutine.async(scope, context) {
             for (s in bookSourceParts) {
                 val source = s.getBookSource() ?: continue
-                val book = preciseSearchAwait(scope, source, name, author).getOrNull()
+                val book = preciseSearchAwait(source, name, author).getOrNull()
                 if (book != null) {
                     return@async Pair(book, source)
                 }
@@ -373,24 +374,19 @@ object WebBook {
     }
 
     suspend fun preciseSearchAwait(
-        scope: CoroutineScope,
         bookSource: BookSource,
         name: String,
         author: String,
     ): Result<Book> {
         return kotlin.runCatching {
-            scope.isActive
+            coroutineContext.ensureActive()
             searchBookAwait(
                 bookSource, name,
                 filter = { fName, fAuthor -> fName == name && fAuthor == author },
                 shouldBreak = { it > 0 }
             ).firstOrNull()?.let { searchBook ->
-                scope.isActive
-                var book = searchBook.toBook()
-                if (book.tocUrl.isBlank()) {
-                    book = getBookInfoAwait(bookSource, book)
-                }
-                return@runCatching book
+                coroutineContext.ensureActive()
+                return@runCatching searchBook.toBook()
             }
             throw NoStackTraceException("未搜索到 $name($author) 书籍")
         }

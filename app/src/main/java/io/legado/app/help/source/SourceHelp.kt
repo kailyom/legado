@@ -1,10 +1,14 @@
 package io.legado.app.help.source
 
+import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.AudioPlay
+import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadManga
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
@@ -26,8 +30,38 @@ object SourceHelp {
 
     fun getSource(key: String?): BaseSource? {
         key ?: return null
+        if (ReadBook.bookSource?.bookSourceUrl == key) {
+            return ReadBook.bookSource
+        } else if (AudioPlay.bookSource?.bookSourceUrl == key) {
+            return AudioPlay.bookSource
+        } else if (ReadManga.bookSource?.bookSourceUrl == key) {
+            return ReadManga.bookSource
+        }
         return appDb.bookSourceDao.getBookSource(key)
             ?: appDb.rssSourceDao.getByKey(key)
+    }
+
+    fun getSource(key: String?, @SourceType.Type type: Int): BaseSource? {
+        key ?: return null
+        return when (type) {
+            SourceType.book -> appDb.bookSourceDao.getBookSource(key)
+            SourceType.rss -> appDb.rssSourceDao.getByKey(key)
+            else -> null
+        }
+    }
+
+    fun deleteSource(key: String, @SourceType.Type type: Int) {
+        when (type) {
+            SourceType.book -> appDb.bookSourceDao.delete(key)
+            SourceType.rss -> appDb.rssSourceDao.delete(key)
+        }
+    }
+
+    fun enableSource(key: String, @SourceType.Type type: Int, enable: Boolean) {
+        when (type) {
+            SourceType.book -> appDb.bookSourceDao.enable(key, enable)
+            SourceType.rss -> appDb.rssSourceDao.enable(key, enable)
+        }
     }
 
     fun insertRssSource(vararg rssSources: RssSource) {
